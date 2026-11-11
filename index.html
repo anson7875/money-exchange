@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0f172a" />
+  <title>匯率即時通 RatePulse — 多國貨幣即時換算 & 走勢</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%232563eb'/><text x='50' y='68' font-size='56' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>¥$</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-logo" aria-hidden="true">¥$</div>
+        <div>
+          <h1 class="brand-title">匯率即時通 <span class="brand-badge">RatePulse</span></h1>
+          <p class="brand-subtitle">點選任何貨幣直接輸入金額或算式（如 <code>1500+300*0.9</code>），即時同步換算</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="rate-status" id="rateStatus" title="匯率更新狀態">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="lastUpdatedText">正在載入最新匯率...</span>
+        </div>
+        <button class="btn btn-icon-text" id="refreshRatesBtn" type="button" title="手動更新最新匯率">
+          <svg class="icon" id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+            <path d="M16 16h5v5" />
+          </svg>
+          <span>更新匯率</span>
+        </button>
+        <button class="btn btn-secondary" id="themeToggleBtn" type="button" title="切換深色 / 淺色模式" aria-label="切換主題">
+          <span id="themeIcon">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Dashboard Grid -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Multi-Currency Converter + Built-in Calculator -->
+      <section class="panel converter-panel" aria-label="多國貨幣即時換算">
+        <div class="panel-header">
+          <div>
+            <h2 class="panel-title">常用貨幣即時換算</h2>
+            <p class="panel-desc">點擊任何一列設為輸入基準貨幣 • 支援直接打加減乘除算式</p>
+          </div>
+          <div class="panel-header-buttons">
+            <button class="btn btn-outline" id="toggleCalcBtn" type="button" title="顯示或隱藏螢幕計數機鍵盤">
+              <span>🧮 計數機鍵盤</span>
+            </button>
+            <button class="btn btn-primary" id="openCurrencyModalBtn" type="button">
+              <span>＋ 管理常用貨幣</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Quick Preset Amount Bar + Active Expression Display -->
+        <div class="quick-bar">
+          <div class="quick-amounts" role="group" aria-label="快速金額">
+            <span class="quick-label">快速金額：</span>
+            <button type="button" class="chip" data-amount="100">100</button>
+            <button type="button" class="chip" data-amount="500">500</button>
+            <button type="button" class="chip" data-amount="1000">1,000</button>
+            <button type="button" class="chip" data-amount="5000">5,000</button>
+            <button type="button" class="chip" data-amount="10000">10,000</button>
+            <button type="button" class="chip chip-discount" data-op="*0.9" title="乘以 0.9（九折 / 免稅 10% 估算）">九折 (×0.9)</button>
+            <button type="button" class="chip chip-discount" data-op="*1.1" title="乘以 1.1（加一服務費 / 10% 稅）">+10% (×1.1)</button>
+          </div>
+        </div>
+
+        <!-- Pinned Currency Cards List -->
+        <div class="currency-list" id="currencyList" role="list">
+          <!-- Dynamically populated by app.js -->
+        </div>
+
+        <!-- Collapsible Built-in Calculator Keypad -->
+        <div class="calc-drawer" id="calcDrawer">
+          <div class="calc-header">
+            <div class="calc-expression-bar">
+              <span class="calc-base-tag" id="calcBaseTag">HKD</span>
+              <span class="calc-expr-text" id="calcExprPreview">100</span>
+              <span class="calc-eval-text" id="calcEvalPreview">= 100</span>
+            </div>
+            <button type="button" class="calc-close-btn" id="closeCalcBtn" title="收起鍵盤">✕</button>
+          </div>
+          <div class="calc-keypad">
+            <button type="button" class="calc-key key-fn" data-key="C">C 清空</button>
+            <button type="button" class="calc-key key-fn" data-key="(">(</button>
+            <button type="button" class="calc-key key-fn" data-key=")">)</button>
+            <button type="button" class="calc-key key-fn" data-key="BACKSPACE">⌫</button>
+
+            <button type="button" class="calc-key" data-key="7">7</button>
+            <button type="button" class="calc-key" data-key="8">8</button>
+            <button type="button" class="calc-key" data-key="9">9</button>
+            <button type="button" class="calc-key key-op" data-key="/">÷</button>
+
+            <button type="button" class="calc-key" data-key="4">4</button>
+            <button type="button" class="calc-key" data-key="5">5</button>
+            <button type="button" class="calc-key" data-key="6">6</button>
+            <button type="button" class="calc-key key-op" data-key="*">×</button>
+
+            <button type="button" class="calc-key" data-key="1">1</button>
+            <button type="button" class="calc-key" data-key="2">2</button>
+            <button type="button" class="calc-key" data-key="3">3</button>
+            <button type="button" class="calc-key key-op" data-key="-">−</button>
+
+            <button type="button" class="calc-key" data-key="0">0</button>
+            <button type="button" class="calc-key" data-key="00">00</button>
+            <button type="button" class="calc-key" data-key=".">.</button>
+            <button type="button" class="calc-key key-op" data-key="+">＋</button>
+
+            <button type="button" class="calc-key key-fn" data-key="*0.95">95折</button>
+            <button type="button" class="calc-key key-fn" data-key="*0.9">9折</button>
+            <button type="button" class="calc-key key-fn" data-key="*0.8">8折</button>
+            <button type="button" class="calc-key key-eq" data-key="=">＝ 計算結果</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Historical Trend Chart & Quick Cross-Rate Card -->
+      <aside class="side-column">
+        <!-- Trend Chart Panel -->
+        <section class="panel chart-panel" aria-label="匯率走勢圖表">
+          <div class="panel-header chart-panel-header">
+            <div>
+              <h2 class="panel-title">匯率歷史走勢圖</h2>
+              <p class="panel-desc" id="chartSubtitle">過去 7 日 / 30 日真實市場匯率變化</p>
+            </div>
+            <div class="range-tabs" role="tablist" aria-label="走勢圖時間範圍">
+              <button type="button" class="range-tab active" data-days="7" role="tab" aria-selected="true">7 日</button>
+              <button type="button" class="range-tab" data-days="30" role="tab" aria-selected="false">30 日</button>
+            </div>
+          </div>
+
+          <!-- Currency Pair Selector for Chart -->
+          <div class="chart-pair-bar">
+            <div class="pair-select-group">
+              <label for="chartFromSelect" class="sr-only">基準貨幣</label>
+              <select id="chartFromSelect" class="pair-select"></select>
+            </div>
+
+            <button type="button" class="btn-swap" id="swapChartPairBtn" title="對調走勢圖貨幣方向">
+              ⇄
+            </button>
+
+            <div class="pair-select-group">
+              <label for="chartToSelect" class="sr-only">目標貨幣</label>
+              <select id="chartToSelect" class="pair-select"></select>
+            </div>
+
+            <label class="per-100-toggle" title="以每 100 單位顯示（例如每 100 日元兌港幣，即港人常用『幾算』）">
+              <input type="checkbox" id="chartPer100Checkbox" />
+              <span>以 100 單位顯示</span>
+            </label>
+          </div>
+
+          <!-- Key Stats Row -->
+          <div class="chart-stats-grid">
+            <div class="stat-box">
+              <span class="stat-label">目前匯率</span>
+              <strong class="stat-value" id="statCurrent">--</strong>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">期間變動</span>
+              <strong class="stat-value" id="statChange">--</strong>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">期間最高</span>
+              <strong class="stat-value" id="statHigh">--</strong>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">期間最低</span>
+              <strong class="stat-value" id="statLow">--</strong>
+            </div>
+          </div>
+
+          <!-- Interactive SVG Chart Container -->
+          <div class="chart-stage" id="chartStage">
+            <div class="chart-loading" id="chartLoading">正在載入歷史走勢數據...</div>
+            <svg id="trendSvg" class="trend-svg" viewBox="0 0 600 250" preserveAspectRatio="none" aria-label="匯率走勢折線圖"></svg>
+            <div class="chart-tooltip" id="chartTooltip" hidden>
+              <div class="tooltip-date" id="tooltipDate"></div>
+              <div class="tooltip-rate" id="tooltipRate"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Handy HKD Reference / Travel Cheat Sheet Card -->
+        <section class="panel reference-panel" aria-label="常用兌換速查表">
+          <div class="panel-header">
+            <div>
+              <h2 class="panel-title">常用旅遊/網購速查表</h2>
+              <p class="panel-desc" id="cheatSheetSubtitle">以目前選擇嘅走勢貨幣對快速對照</p>
+            </div>
+          </div>
+          <div class="cheatsheet-grid" id="cheatSheetGrid">
+            <!-- Populated dynamically by app.js -->
+          </div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Modal: Manage Pinned Currencies -->
+  <div class="modal-backdrop" id="currencyModal" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="modalTitle">自訂常用貨幣清單</h3>
+          <p class="modal-subtitle">釘選喜愛貨幣、調整顯示順序（自動儲存喺瀏覽器）</p>
+        </div>
+        <button type="button" class="modal-close-btn" id="closeCurrencyModalBtn" aria-label="關閉">✕</button>
+      </div>
+
+      <div class="modal-toolbar">
+        <div class="search-input-wrap">
+          <span class="search-icon">🔍</span>
+          <input
+            type="search"
+            id="currencySearchInput"
+            class="search-input"
+            placeholder="搜尋貨幣代碼或名稱（例如：JPY、日元、KRW、韓元、英鎊...）"
+            autocomplete="off"
+          />
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" id="resetDefaultCurrenciesBtn">
+          還原預設 5 隻貨幣
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="modal-section-title">已釘選貨幣（可上下調整次序）</div>
+        <div class="modal-currency-list" id="pinnedModalList"></div>
+
+        <div class="modal-section-title">更多可加入貨幣</div>
+        <div class="modal-currency-list" id="unpinnedModalList"></div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="pinned-count-text" id="pinnedCountText">已釘選 5 種貨幣</span>
+        <button type="button" class="btn btn-primary" id="doneCurrencyModalBtn">完成</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
