@@ -85,14 +85,21 @@ const STORAGE_KEYS = {
   BASE_EXPR: "ratepulse_base_expr_v1",
   RATES_CACHE: "ratepulse_rates_cache_v1",
   THEME: "ratepulse_theme_v1",
-  CHART_PAIR: "ratepulse_chart_pair_v1"
+  CHART_PAIR: "ratepulse_chart_pair_v1",
+  LOCK_AMOUNT: "ratepulse_lock_amount_v1"
 };
+
+const initialBaseCode = localStorage.getItem(STORAGE_KEYS.BASE_CODE) || "HKD";
+const initialRawExpr = localStorage.getItem(STORAGE_KEYS.BASE_EXPR) || "100";
 
 const state = {
   pinned: loadPinnedCurrencies(),
-  baseCode: localStorage.getItem(STORAGE_KEYS.BASE_CODE) || "HKD",
-  rawExpression: localStorage.getItem(STORAGE_KEYS.BASE_EXPR) || "100",
+  baseCode: initialBaseCode,
+  rawExpression: initialRawExpr,
   baseAmount: 100,
+  anchorCode: initialBaseCode,
+  anchorAmount: 100,
+  lockInputAmount: localStorage.getItem(STORAGE_KEYS.LOCK_AMOUNT) === "true",
   ratesInUSD: { ...FALLBACK_USD_RATES },
   lastUpdated: null,
   apiLatestDate: null,
@@ -107,6 +114,13 @@ const state = {
 // Ensure baseCode is in pinned
 if (!state.pinned.includes(state.baseCode)) {
   state.baseCode = state.pinned[0] || "HKD";
+  state.anchorCode = state.baseCode;
+}
+
+const initEval = evaluateMathExpression(state.rawExpression);
+if (initEval.valid && initEval.value !== null) {
+  state.baseAmount = initEval.value;
+  state.anchorAmount = initEval.value;
 }
 
 // Restore saved chart pair if valid
@@ -418,13 +432,25 @@ function updateRateStatusUI(isOnline, hasCache) {
    Multi-Currency Converter UI
    ========================================================================== */
 
+/**
+ * Returns the exact amount for `code` anchored to the user's last explicitly entered currency & amount,
+ * eliminating any 99.99 / 100.01 rounding drift when clicking between currencies.
+ */
+function getAnchoredAmount(code) {
+  if (code === state.anchorCode) {
+    return state.anchorAmount;
+  }
+  return convertCurrency(state.anchorAmount, state.anchorCode, code);
+}
+
 function renderCurrencyCards() {
   const listEl = document.getElementById("currencyList");
   if (!listEl) return;
 
   const evalRes = evaluateMathExpression(state.rawExpression);
-  if (evalRes.valid && evalRes.value !== null) {
+  if (state.baseCode === state.anchorCode && evalRes.valid && evalRes.value !== null) {
     state.baseAmount = evalRes.value;
+    state.anchorAmount = evalRes.value;
   }
 
   listEl.innerHTML = "";
@@ -439,8 +465,8 @@ function renderCurrencyCards() {
     card.dataset.code = code;
     card.setAttribute("role", "listitem");
 
-    // Calculate displayed value
-    const convertedVal = convertCurrency(state.baseAmount, state.baseCode, code);
+    // Calculate displayed value anchored to exact user input (no rounding drift)
+    const convertedVal = getAnchoredAmount(code);
     const inputDisplayValue = isBase
       ? state.rawExpression
       : formatCurrencyAmount(convertedVal, code, true);
@@ -543,7 +569,7 @@ function renderCurrencyCards() {
         const action = btn.dataset.action;
         const targetCode = btn.dataset.code;
         if (action === "copy") {
-          const val = convertCurrency(state.baseAmount, state.baseCode, targetCode);
+          const val = getAnchoredAmount(targetCode);
           const formatted = `${targetCode} ${formatCurrencyAmount(val, targetCode, false)}`;
           navigator.clipboard?.writeText(formatted);
           showToast(`📋 已複製：${formatted}`);
@@ -593,16 +619,26 @@ function buildRateSubtitleHTML(code) {
 
 function switchActiveCurrency(newCode, focusInput = true) {
   if (!CURRENCY_MAP[newCode]) return;
-  const converted = convertCurrency(state.baseAmount, state.baseCode, newCode);
-  const meta = CURRENCY_MAP[newCode];
-  const rounded =
-    meta.decimals === 0
-      ? Math.round(converted)
-      : Number(converted.toFixed(converted < 1 ? 4 : meta.decimals));
 
-  state.baseCode = newCode;
-  state.baseAmount = rounded;
-  state.rawExpression = String(rounded);
+  if (state.lockInputAmount) {
+    // Mode A: Lock the exact input number across currencies (e.g. 100 HKD -> 100 JPY -> 100 USD)
+    state.baseCode = newCode;
+    state.anchorCode = newCode;
+    state.baseAmount = state.anchorAmount;
+  } else {
+    // Mode B: Follow converted value, while keeping anchorCode + anchorAmount locked
+    // so the original currency (e.g. 100 HKD) NEVER drifts to 99.99 / 100.1 until the user edits!
+    const exactConverted = getAnchoredAmount(newCode);
+    const meta = CURRENCY_MAP[newCode];
+    const displayRounded =
+      meta.decimals === 0
+        ? Math.round(exactConverted)
+        : Number(exactConverted.toFixed(exactConverted < 1 ? 4 : meta.decimals));
+
+    state.baseCode = newCode;
+    state.baseAmount = exactConverted;
+    state.rawExpression = String(displayRounded);
+  }
 
   localStorage.setItem(STORAGE_KEYS.BASE_CODE, state.baseCode);
   localStorage.setItem(STORAGE_KEYS.BASE_EXPR, state.rawExpression);
@@ -620,11 +656,13 @@ function switchActiveCurrency(newCode, focusInput = true) {
 
 function handleExpressionInput(rawStr) {
   state.rawExpression = rawStr;
+  state.anchorCode = state.baseCode;
   localStorage.setItem(STORAGE_KEYS.BASE_EXPR, state.rawExpression);
 
   const evalRes = evaluateMathExpression(rawStr);
   if (evalRes.valid && evalRes.value !== null) {
     state.baseAmount = evalRes.value;
+    state.anchorAmount = evalRes.value;
   }
 
   updateAllConverterValues(false);
@@ -637,6 +675,8 @@ function commitEvaluatedExpression() {
     const meta = CURRENCY_MAP[state.baseCode] || { decimals: 2 };
     const cleanVal = Number(evalRes.value.toFixed(meta.decimals === 0 ? 2 : meta.decimals));
     state.baseAmount = cleanVal;
+    state.anchorCode = state.baseCode;
+    state.anchorAmount = cleanVal;
     state.rawExpression = String(cleanVal);
     localStorage.setItem(STORAGE_KEYS.BASE_EXPR, state.rawExpression);
     updateAllConverterValues(true);
@@ -675,7 +715,7 @@ function updateAllConverterValues(updateActiveInputToo = false) {
       }
     } else if (inputEl) {
       if (hintEl) hintEl.textContent = "";
-      const val = convertCurrency(state.baseAmount, state.baseCode, code);
+      const val = getAnchoredAmount(code);
       inputEl.value = formatCurrencyAmount(val, code, true);
     }
   });
@@ -1040,6 +1080,8 @@ function renderCheatSheet() {
       }
       state.baseCode = code;
       state.baseAmount = amt;
+      state.anchorCode = code;
+      state.anchorAmount = amt;
       state.rawExpression = String(amt);
       renderCurrencyCards();
       showToast(`已帶入 ${amt.toLocaleString()} ${code}`);
@@ -1184,6 +1226,29 @@ function initTheme() {
 }
 
 function initQuickPresetsAndCalculator() {
+  // Lock amount toggle button
+  const lockBtn = document.getElementById("lockAmountToggleBtn");
+  const syncLockBtnUI = () => {
+    if (!lockBtn) return;
+    lockBtn.classList.toggle("locked", state.lockInputAmount);
+    lockBtn.setAttribute("aria-pressed", String(state.lockInputAmount));
+    lockBtn.textContent = state.lockInputAmount
+      ? "🔒 已鎖定輸入數字"
+      : "🔓 切換跟隨換算值";
+  };
+  syncLockBtnUI();
+
+  lockBtn?.addEventListener("click", () => {
+    state.lockInputAmount = !state.lockInputAmount;
+    localStorage.setItem(STORAGE_KEYS.LOCK_AMOUNT, String(state.lockInputAmount));
+    syncLockBtnUI();
+    showToast(
+      state.lockInputAmount
+        ? "🔒 已開啟「鎖定輸入數字」：點選其他貨幣時會保持同一個輸入數字"
+        : "🔓 已切換為「跟隨換算值」（同時鎖定原金額不因四捨五入跳動）"
+    );
+  });
+
   // Quick amount chips
   document.querySelectorAll(".chip[data-amount]").forEach((chip) => {
     chip.addEventListener("click", () => {

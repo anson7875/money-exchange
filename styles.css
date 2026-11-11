@@ -345,6 +345,18 @@ body {
   color: var(--accent);
 }
 
+.chip-lock {
+  margin-left: auto;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.chip-lock.locked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
 /* Currency Cards List */
 .currency-list {
   display: flex;
